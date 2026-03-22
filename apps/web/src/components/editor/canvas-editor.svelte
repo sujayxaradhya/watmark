@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { ToolMode, MaskStroke } from "$lib/types";
 
+  export interface EditorHandle {
+    undo: () => void;
+    clearMask: () => void;
+    getNaturalDimensions: () => { width: number; height: number };
+  }
+
   interface Props {
     imageSrc: string;
     videoSrc?: string;
@@ -9,6 +15,7 @@
     toolMode: ToolMode;
     onStrokesChange: (strokes: MaskStroke[]) => void;
     onCanvasReady: (source: HTMLCanvasElement, mask: HTMLCanvasElement) => void;
+    onRegister: (handle: EditorHandle) => void;
   }
 
   const {
@@ -19,6 +26,7 @@
     toolMode,
     onStrokesChange,
     onCanvasReady,
+    onRegister,
   }: Props = $props();
 
   // eslint-disable-next-line prefer-const
@@ -256,6 +264,10 @@
   export const getNaturalDimensions = () => ({
     height: canvasHeight,
     width: canvasWidth,
+  });
+
+  $effect(() => {
+    onRegister({ clearMask, getNaturalDimensions, undo });
   });
 
   $effect(() => {

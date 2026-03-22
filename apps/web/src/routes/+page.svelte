@@ -2,6 +2,7 @@
   import type { ToolMode, FileType, MaskStroke } from "$lib/types";
   import UploadArea from "../components/editor/upload-area.svelte";
   import CanvasEditor from "../components/editor/canvas-editor.svelte";
+  import type { EditorHandle } from "../components/editor/canvas-editor.svelte";
   import Toolbar from "../components/editor/toolbar.svelte";
   import ProcessingStatus from "../components/editor/processing-status.svelte";
   import ResultPreview from "../components/editor/result-preview.svelte";
@@ -23,8 +24,7 @@
   let statusText = $state("");
   let error = $state<string | null>(null);
 
-  // eslint-disable-next-line prefer-const
-  let canvasEditor = $state<CanvasEditor | null>(null);
+  let editorHandle = $state<EditorHandle | null>(null);
   let sourceCanvas = $state<HTMLCanvasElement | null>(null);
   let maskCanvas = $state<HTMLCanvasElement | null>(null);
 
@@ -84,7 +84,7 @@
         processedUrl = sourceCanvas.toDataURL("image/png");
       } else {
         statusText = "Preparing video processing...";
-        const dims = canvasEditor?.getNaturalDimensions() ?? {
+        const dims = editorHandle?.getNaturalDimensions() ?? {
           height: sourceCanvas.height,
           width: sourceCanvas.width,
         };
@@ -143,8 +143,8 @@
     maskCanvas = null;
   };
 
-  const handleUndo = () => canvasEditor?.undo();
-  const handleClear = () => canvasEditor?.clearMask();
+  const handleUndo = () => editorHandle?.undo();
+  const handleClear = () => editorHandle?.clearMask();
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (phase !== "editing") {return;}
@@ -201,7 +201,7 @@
           />
         {:else if originalUrl}
           <CanvasEditor
-            bind:this={canvasEditor}
+            onRegister={(h) => (editorHandle = h)}
             imageSrc={originalUrl}
             videoSrc={isVideo ? originalUrl : undefined}
             {isVideo}
