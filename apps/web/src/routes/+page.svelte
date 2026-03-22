@@ -178,7 +178,7 @@
         onBrushSizeChange={(s) => (brushSize = s)}
         onToolModeChange={(m) => (toolMode = m)}
         onUndo={handleUndo}
-        onClear={handleClear}
+        onClear={handleReset}
         onProcess={handleProcess}
         onDownload={handleDownload}
         onReset={handleReset}

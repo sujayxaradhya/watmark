@@ -104,9 +104,9 @@
       <button
         class="tool-btn"
         onclick={onClear}
-        disabled={!hasStrokes || isProcessing}
-        title="Clear all"
-        aria-label="Clear all"
+        disabled={isProcessing}
+        title="Delete image"
+        aria-label="Delete image"
       >
         <Trash2 size={16} />
       </button>
