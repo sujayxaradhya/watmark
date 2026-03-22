@@ -3,5 +3,33 @@
   "extends": [
     "./node_modules/ultracite/config/oxlint/core/.oxlintrc.json",
     "./node_modules/ultracite/config/oxlint/svelte/.oxlintrc.json"
-  ]
+  ],
+  "rules": {
+    "func-style": [
+      "error",
+      "declaration",
+      {
+        "allowArrowFunctions": true
+      }
+    ],
+    "unicorn/filename-case": [
+      "warn",
+      {
+        "cases": {
+          "pascalCase": true,
+          "kebabCase": true,
+          "camelCase": true
+        }
+      }
+    ],
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "no-warning-comments": "allow",
+    "typescript/no-import-type-side-effects": "off",
+    "sort-keys": "off",
+    "prefer-const": "off",
+    "no-shadow": "off",
+    "no-ex-assign": "off",
+    "no-negated-condition": "off",
+    "typescript/no-non-null-assertion": "off"
+  }
 }
