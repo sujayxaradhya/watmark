@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Loader2 } from "lucide-svelte";
 
-  interface Props {
+  type Props = {
     isProcessing: boolean;
     progress: number;
     statusText: string;

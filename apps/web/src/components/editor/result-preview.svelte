@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Download, Check } from "lucide-svelte";
 
-  interface Props {
+  type Props = {
     originalUrl: string;
     processedUrl: string;
     isVideo: boolean;

@@ -11,7 +11,7 @@
   } from "lucide-svelte";
   import type { ToolMode } from "$lib/types";
 
-  interface Props {
+  type Props = {
     brushSize: number;
     toolMode: ToolMode;
     hasStrokes: boolean;

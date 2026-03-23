@@ -2,7 +2,7 @@
   import { Upload, Image, Video } from "lucide-svelte";
   import type { FileType } from "$lib/types";
 
-  interface Props {
+  type Props = {
     onFileSelect: (file: File, type: FileType) => void;
   }
 

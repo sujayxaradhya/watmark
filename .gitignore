@@ -51,3 +51,6 @@ coverage
 .cache
 tmp
 temp
+
+# Kilo
+.kilo/

@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { ToolMode, MaskStroke } from "$lib/types";
 
-  export interface EditorHandle {
+  export type EditorHandle = {
     undo: () => void;
     clearMask: () => void;
     getNaturalDimensions: () => { width: number; height: number };
   }
 
-  interface Props {
+  type Props = {
     imageSrc: string;
     videoSrc?: string;
     isVideo: boolean;
@@ -47,11 +47,21 @@
   let canvasHeight = $state(0);
   let imageLoaded = $state(false);
 
+  let cursorVisible = $state(false);
+  let cursorX = $state(0);
+  let cursorY = $state(0);
+
+  const cursorDiameter = $derived(
+    displayCanvas && displayCanvas.width > 0
+      ? brushSize * (displayCanvas.getBoundingClientRect().width / displayCanvas.width)
+      : brushSize,
+  );
+
   const MAX_DIMENSION = 2000;
 
   const redrawDisplay = () => {
     const ctx = displayCanvas?.getContext("2d");
-    if (!ctx || !sourceCanvas || !maskCanvas) return;
+    if (!ctx || !sourceCanvas || !maskCanvas) {return;}
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(sourceCanvas, 0, 0);
@@ -60,7 +70,7 @@
 
   const drawBrushAt = (x: number, y: number) => {
     const ctx = maskCanvas?.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {return;}
 
     ctx.globalCompositeOperation =
       toolMode === "eraser" ? "destination-out" : "source-over";
@@ -92,7 +102,7 @@
   };
 
   const captureVideoFrame = () => {
-    if (!videoEl || !sourceCanvas) return;
+    if (!videoEl || !sourceCanvas) {return;}
     const ctx = sourceCanvas.getContext("2d");
     if (ctx) {
       ctx.drawImage(videoEl, 0, 0, canvasWidth, canvasHeight);
@@ -118,7 +128,7 @@
     }
 
     const maskCtx = maskCanvas?.getContext("2d");
-    if (maskCtx) maskCtx.clearRect(0, 0, w, h);
+    if (maskCtx) {maskCtx.clearRect(0, 0, w, h);}
 
     imageLoaded = true;
     if (sourceCanvas && maskCanvas) {
@@ -127,7 +137,7 @@
   };
 
   const clampDimension = (w: number, h: number): [number, number] => {
-    if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) return [w, h];
+    if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) {return [w, h];}
     const scale = MAX_DIMENSION / Math.max(w, h);
     return [Math.round(w * scale), Math.round(h * scale)];
   };
@@ -140,7 +150,7 @@
       initCanvases(w, h);
 
       const ctx = sourceCanvas?.getContext("2d");
-      if (ctx) ctx.drawImage(img, 0, 0, w, h);
+      if (ctx) {ctx.drawImage(img, 0, 0, w, h);}
       redrawDisplay();
     });
     img.src = imageSrc;
@@ -148,7 +158,7 @@
 
   const loadVideoFrame = () => {
     const video = videoEl;
-    if (!video) return;
+    if (!video) {return;}
     video.currentTime = 0;
 
     video.addEventListener("loadeddata", () => {
@@ -164,7 +174,7 @@
     e: MouseEvent | TouchEvent,
   ): { x: number; y: number } => {
     const canvas = displayCanvas;
-    if (!canvas) return { x: 0, y: 0 };
+    if (!canvas) {return { x: 0, y: 0 };}
 
     const rect = canvas.getBoundingClientRect();
     const clientX =
@@ -181,6 +191,21 @@
     };
   };
 
+
+  const updateCursor = (e: MouseEvent) => {
+    const canvas = displayCanvas;
+    if (!canvas) {return;}
+
+    const rect = canvas.getBoundingClientRect();
+    cursorX = e.clientX - rect.left;
+    cursorY = e.clientY - rect.top;
+    cursorVisible = true;
+  };
+
+  const hideCursor = () => {
+    cursorVisible = false;
+  };
+
   const startDrawing = (e: MouseEvent | TouchEvent) => {
     e.preventDefault();
     isDrawing = true;
@@ -194,7 +219,23 @@
   };
 
   const draw = (e: MouseEvent | TouchEvent) => {
-    if (!isDrawing || !currentStroke) return;
+    if ("touches" in e) {
+      if (!isDrawing || !currentStroke) {return;}
+      e.preventDefault();
+      const coords = getCanvasCoords(e);
+      currentStroke.points.push(coords);
+
+      const prev = currentStroke.points.at(-2);
+      if (prev) {
+        interpolateLine(prev.x, prev.y, coords.x, coords.y);
+      }
+      redrawDisplay();
+      return;
+    }
+
+    updateCursor(e);
+
+    if (!isDrawing || !currentStroke) {return;}
     e.preventDefault();
     const coords = getCanvasCoords(e);
     currentStroke.points.push(coords);
@@ -207,16 +248,18 @@
   };
 
   const stopDrawing = () => {
-    if (!isDrawing || !currentStroke) return;
+    if (!isDrawing || !currentStroke) {return;}
     isDrawing = false;
     strokes = [...strokes, currentStroke];
     onStrokesChange(strokes);
     currentStroke = null;
   };
 
+
+
   const redrawMask = () => {
     const ctx = maskCanvas?.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {return;}
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
@@ -240,7 +283,7 @@
   };
 
   export const undo = () => {
-    if (strokes.length === 0) return;
+    if (strokes.length === 0) {return;}
     strokes = strokes.slice(0, -1);
     redrawMask();
     onStrokesChange(strokes);
@@ -249,7 +292,7 @@
   export const clearMask = () => {
     strokes = [];
     const ctx = maskCanvas?.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    if (ctx) {ctx.clearRect(0, 0, canvasWidth, canvasHeight);}
     redrawDisplay();
     onStrokesChange([]);
   };
@@ -304,11 +347,23 @@
       onmousedown={startDrawing}
       onmousemove={draw}
       onmouseup={stopDrawing}
-      onmouseleave={stopDrawing}
+      onmouseleave={() => { stopDrawing(); hideCursor(); }}
+      onmouseenter={updateCursor}
       ontouchstart={startDrawing}
       ontouchmove={draw}
       ontouchend={stopDrawing}
     ></canvas>
+
+    {#if cursorVisible && imageLoaded}
+      <div
+        class="cursor-circle"
+        class:eraser={toolMode === "eraser"}
+        style:left={`${cursorX}px`}
+        style:top={`${cursorY}px`}
+        style:width={`${cursorDiameter}px`}
+        style:height={`${cursorDiameter}px`}
+      ></div>
+    {/if}
 
     {#if !imageLoaded}
       <div class="canvas-placeholder">
@@ -356,11 +411,27 @@
 
   .display-canvas {
     display: block;
-    cursor: crosshair;
+    cursor: none;
     max-width: 100%;
     max-height: calc(100vh - 200px);
     width: auto;
     height: auto;
+  }
+
+  .cursor-circle {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    mix-blend-mode: difference;
+  }
+
+  .cursor-circle.eraser {
+    border: 2px dashed rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
   }
 
   .canvas-placeholder {

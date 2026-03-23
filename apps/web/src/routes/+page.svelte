@@ -16,7 +16,7 @@
   let originalUrl = $state<string | null>(null);
   let processedUrl = $state<string | null>(null);
   // eslint-disable-next-line prefer-const
-  let brushSize = $state(20);
+  let brushSize = $state(35);
   let toolMode = $state<ToolMode>("brush");
   let strokes = $state<MaskStroke[]>([]);
   let isProcessing = $state(false);

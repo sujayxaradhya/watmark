@@ -4,13 +4,13 @@ export type FileType = "image" | "video";
 
 export type EditorPhase = "upload" | "editing" | "processing" | "result";
 
-export interface MaskStroke {
+export type MaskStroke = {
   points: { x: number; y: number }[];
   brushSize: number;
   mode: ToolMode;
-}
+};
 
-export interface EditorState {
+export type EditorState = {
   phase: EditorPhase;
   file: File | null;
   fileType: FileType | null;
@@ -23,10 +23,10 @@ export interface EditorState {
   progress: number;
   statusText: string;
   error: string | null;
-}
+};
 
 export const createDefaultState = (): EditorState => ({
-  brushSize: 20,
+  brushSize: 35,
   error: null,
   file: null,
   fileType: null,

@@ -9,7 +9,7 @@ const CORE_BASE_URL =
 
 const getExtension = (filename: string): string => {
   const dot = filename.lastIndexOf(".");
-  return dot >= 0 ? filename.slice(dot) : ".mp4";
+  return dot !== -1 ? filename.slice(dot) : ".mp4";
 };
 
 export const loadFFmpeg = async (
@@ -66,12 +66,12 @@ export const loadFFmpeg = async (
   return ffmpegInstance;
 };
 
-export interface MaskBounds {
+export type MaskBounds = {
   x: number;
   y: number;
   width: number;
   height: number;
-}
+};
 
 export const computeMaskBounds = (
   maskCanvas: HTMLCanvasElement
