@@ -107,8 +107,8 @@
       }
 
       phase = "result";
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Processing failed";
+    } catch (error) {
+      error = error instanceof Error ? error.message : "Processing failed";
       phase = "editing";
     } finally {
       isProcessing = false;
