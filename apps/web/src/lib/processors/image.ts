@@ -3,15 +3,15 @@ export type InpaintResult = {
   hasMask: boolean;
 };
 
-const CTX_RADIUS = 7;
-const SEARCH_RADIUS = 80;
+const CTX_RADIUS = 5;
+const SEARCH_RADIUS = 100;
 const SEARCH_STRIDE = 3;
-const SMOOTH_RADIUS = 2;
-const SMOOTH_THRESHOLD = 40;
-const BLEND_BAND = 8;
+const SMOOTH_RADIUS = 3;
+const SMOOTH_THRESHOLD = 30;
+const BLEND_BAND = 12;
 const BILATERAL_RADIUS = 3;
 const BILATERAL_SIGMA_S = 3;
-const BILATERAL_SIGMA_R = 25;
+const BILATERAL_SIGMA_R = 20;
 
 const computeDistanceMap = (
   mask: Uint8Array,
@@ -51,9 +51,7 @@ const computeDistanceMap = (
       [cx, cy - 1],
       [cx, cy + 1],
     ] as const) {
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-        continue;
-      }
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
       const nidx = ny * width + nx;
       if (dist[nidx]! < 0 || dist[nidx]! > d + 1) {
         dist[nidx] = d + 1;
@@ -64,26 +62,24 @@ const computeDistanceMap = (
   return dist;
 };
 
-const isPatchClean = (
+const isSourcePatchValid = (
   mask: Uint8Array,
   sx: number,
   sy: number,
   width: number,
   height: number
 ): boolean => {
+  let maskHits = 0;
+  const patchSize = (2 * CTX_RADIUS + 1) ** 2;
   for (let dy = -CTX_RADIUS; dy <= CTX_RADIUS; dy += 1) {
     for (let dx = -CTX_RADIUS; dx <= CTX_RADIUS; dx += 1) {
       const px = sx + dx;
       const py = sy + dy;
-      if (px < 0 || px >= width || py < 0 || py >= height) {
-        return false;
-      }
-      if (mask[py * width + px]) {
-        return false;
-      }
+      if (px < 0 || px >= width || py < 0 || py >= height) {return false;}
+      if (mask[py * width + px]) {maskHits += 1;}
     }
   }
-  return true;
+  return maskHits < patchSize * 0.1;
 };
 
 // eslint-disable-next-line complexity
@@ -104,24 +100,16 @@ const computeContextSSD = (
   let count = 0;
   for (let dy = -CTX_RADIUS; dy <= CTX_RADIUS; dy += 1) {
     for (let dx = -CTX_RADIUS; dx <= CTX_RADIUS; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
+      if (dx === 0 && dy === 0) {continue;}
       const tx = cx + dx;
       const ty = cy + dy;
       const ssx = sx + dx;
       const ssy = sy + dy;
-      if (tx < 0 || tx >= width || ty < 0 || ty >= height) {
-        continue;
-      }
-      if (ssx < 0 || ssx >= width || ssy < 0 || ssy >= height) {
-        continue;
-      }
+      if (tx < 0 || tx >= width || ty < 0 || ty >= height) {continue;}
+      if (ssx < 0 || ssx >= width || ssy < 0 || ssy >= height) {continue;}
       const tidx = ty * width + tx;
+      if (mask[tidx]) {continue;}
       const sidx = ssy * width + ssx;
-      if (mask[tidx]) {
-        continue;
-      }
       const dr = (r[tidx] ?? 0) - (r[sidx] ?? 0);
       const dg = (g[tidx] ?? 0) - (g[sidx] ?? 0);
       const db = (b[tidx] ?? 0) - (b[sidx] ?? 0);
@@ -129,7 +117,7 @@ const computeContextSSD = (
       count += 1;
     }
   }
-  return count > 0 ? ssd / count : Number.POSITIVE_INFINITY;
+  return count >= 3 ? ssd / count : Number.POSITIVE_INFINITY;
 };
 
 const searchRange = (
@@ -149,22 +137,22 @@ const findBestPixel = (
   cx: number,
   cy: number,
   width: number,
-  height: number
+  height: number,
+  hintX: number,
+  hintY: number
 ): { r: number; g: number; b: number; ssd: number } => {
   let bestSSD = Number.POSITIVE_INFINITY;
   let bestR = 128;
   let bestG = 128;
   let bestB = 128;
+
   const [xMin, xMax] = searchRange(cx, SEARCH_RADIUS, width);
   const [yMin, yMax] = searchRange(cy, SEARCH_RADIUS, height);
+
   const evaluate = (sx: number, sy: number) => {
     const sidx = sy * width + sx;
-    if (mask[sidx]) {
-      return;
-    }
-    if (!isPatchClean(mask, sx, sy, width, height)) {
-      return;
-    }
+    if (mask[sidx]) {return;}
+    if (!isSourcePatchValid(mask, sx, sy, width, height)) {return;}
     const ssd = computeContextSSD(
       r,
       g,
@@ -185,11 +173,19 @@ const findBestPixel = (
       bestB = b[sidx] ?? 0;
     }
   };
-  for (let sy = yMin; sy <= yMax; sy += SEARCH_STRIDE) {
-    for (let sx = xMin; sx <= xMax; sx += SEARCH_STRIDE) {
-      evaluate(sx, sy);
+
+  if (hintX > 0 || hintY > 0) {
+    const [hxMin, hxMax] = searchRange(hintX, 30, width);
+    const [hyMin, hyMax] = searchRange(hintY, 30, height);
+    for (let sy = hyMin; sy <= hyMax; sy += 1) {
+      for (let sx = hxMin; sx <= hxMax; sx += 1) {evaluate(sx, sy);}
     }
   }
+
+  for (let sy = yMin; sy <= yMax; sy += SEARCH_STRIDE) {
+    for (let sx = xMin; sx <= xMax; sx += SEARCH_STRIDE) {evaluate(sx, sy);}
+  }
+
   if (bestSSD < Number.POSITIVE_INFINITY) {
     for (
       let sy = Math.max(CTX_RADIUS, cy - SEARCH_STRIDE + 1);
@@ -200,12 +196,61 @@ const findBestPixel = (
         let sx = Math.max(CTX_RADIUS, cx - SEARCH_STRIDE + 1);
         sx <= Math.min(width - CTX_RADIUS - 1, cx + SEARCH_STRIDE - 1);
         sx += 1
-      ) {
-        evaluate(sx, sy);
+      )
+        {evaluate(sx, sy);}
+    }
+  }
+
+  return { r: bestR, g: bestG, b: bestB, ssd: bestSSD };
+};
+
+const iterativeDiffusionFill = (
+  r: Float32Array,
+  g: Float32Array,
+  b: Float32Array,
+  mask: Uint8Array,
+  width: number,
+  height: number
+): void => {
+  const size = width * height;
+  let changed = true;
+  let iterations = 0;
+  while (changed && iterations < 50) {
+    changed = false;
+    iterations += 1;
+    for (let i = 0; i < size; i += 1) {
+      if (!mask[i]) {continue;}
+      const x = i % width;
+      const y = (i - x) / width;
+      let cr = 0;
+      let cg = 0;
+      let cb = 0;
+      let cc = 0;
+      for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          if (dx === 0 && dy === 0) {continue;}
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
+          const ni = ny * width + nx;
+          if (!mask[ni]) {
+            const w = 1 / (Math.abs(dx) + Math.abs(dy));
+            cr += (r[ni] ?? 0) * w;
+            cg += (g[ni] ?? 0) * w;
+            cb += (b[ni] ?? 0) * w;
+            cc += w;
+          }
+        }
+      }
+      if (cc > 0) {
+        r[i] = cr / cc;
+        g[i] = cg / cc;
+        b[i] = cb / cc;
+        mask[i] = 0;
+        changed = true;
       }
     }
   }
-  return { r: bestR, g: bestG, b: bestB, ssd: bestSSD };
 };
 
 const smoothPixel = (
@@ -225,14 +270,10 @@ const smoothPixel = (
   let count = 0;
   for (let dy = -SMOOTH_RADIUS; dy <= SMOOTH_RADIUS; dy += 1) {
     for (let dx = -SMOOTH_RADIUS; dx <= SMOOTH_RADIUS; dx += 1) {
-      if (dx === 0 && dy === 0) {
-        continue;
-      }
+      if (dx === 0 && dy === 0) {continue;}
       const nx = cx + dx;
       const ny = cy + dy;
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-        continue;
-      }
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
       const nidx = ny * width + nx;
       sumR += r[nidx] ?? 0;
       sumG += g[nidx] ?? 0;
@@ -240,9 +281,7 @@ const smoothPixel = (
       count += 1;
     }
   }
-  if (count === 0) {
-    return { r: r[idx] ?? 0, g: g[idx] ?? 0, b: b[idx] ?? 0 };
-  }
+  if (count === 0) {return { r: r[idx] ?? 0, g: g[idx] ?? 0, b: b[idx] ?? 0 };}
   const avgR = sumR / count;
   const avgG = sumG / count;
   const avgB = sumB / count;
@@ -253,7 +292,7 @@ const smoothPixel = (
     Math.abs(cr - avgR) + Math.abs(cg - avgG) + Math.abs(cb - avgB) >
     SMOOTH_THRESHOLD
   ) {
-    return { r: avgR, g: avgG, b: avgB };
+    return { r: (cr + avgR) / 2, g: (cg + avgG) / 2, b: (cb + avgB) / 2 };
   }
   return { r: cr, g: cg, b: cb };
 };
@@ -270,7 +309,7 @@ const applySmoothing = (
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const idx = y * width + x;
-      if (distMap[idx]! > 0 && distMap[idx]! <= 8) {
+      if (distMap[idx]! > 0 && distMap[idx]! <= 10) {
         const smoothed = smoothPixel(r, g, b, mask, idx, width, height);
         r[idx] = smoothed.r;
         g[idx] = smoothed.g;
@@ -300,9 +339,7 @@ const bilateralFilterPixel = (
     for (let kx = -BILATERAL_RADIUS; kx <= BILATERAL_RADIUS; kx += 1) {
       const nx = x + kx;
       const ny = y + ky;
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-        continue;
-      }
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
       const nidx = ny * width + nx;
       const nr = srcR[nidx] ?? 0;
       const ng = srcG[nidx] ?? 0;
@@ -389,58 +426,12 @@ const blendBoundary = (
     for (let x = 0; x < width; x += 1) {
       const idx = y * width + x;
       const d = distMap[idx]!;
-      if (d <= 0 || d > BLEND_BAND) {
-        continue;
-      }
-      const t = (d / BLEND_BAND) ** 0.7;
+      if (d <= 0 || d > BLEND_BAND) {continue;}
+      const t = (d / BLEND_BAND) ** 0.6;
       r[idx] = srcR[idx]! * (1 - t) + r[idx]! * t;
       g[idx] = srcG[idx]! * (1 - t) + g[idx]! * t;
       b[idx] = srcB[idx]! * (1 - t) + b[idx]! * t;
     }
-  }
-};
-
-const fallbackFill = (
-  r: Float32Array,
-  g: Float32Array,
-  b: Float32Array,
-  mask: Uint8Array,
-  width: number,
-  height: number
-): void => {
-  const size = width * height;
-  for (let i = 0; i < size; i += 1) {
-    if (!mask[i]) {
-      continue;
-    }
-    const x = i % width;
-    const y = (i - x) / width;
-    let bc = 0;
-    let br = 0;
-    let bg = 0;
-    let bb = 0;
-    for (let dy = -3; dy <= 3; dy += 1) {
-      for (let dx = -3; dx <= 3; dx += 1) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-          continue;
-        }
-        const ni = ny * width + nx;
-        if (!mask[ni]) {
-          br += r[ni] ?? 0;
-          bg += g[ni] ?? 0;
-          bb += b[ni] ?? 0;
-          bc += 1;
-        }
-      }
-    }
-    if (bc > 0) {
-      r[i] = br / bc;
-      g[i] = bg / bc;
-      b[i] = bb / bc;
-    }
-    mask[i] = 0;
   }
 };
 
@@ -492,9 +483,7 @@ export const inpaintImage = (
   const { width, height } = sourceCanvas;
   const srcCtx = sourceCanvas.getContext("2d");
   const maskCtx = maskCanvas.getContext("2d");
-  if (!srcCtx || !maskCtx) {
-    throw new Error("Failed to get canvas context");
-  }
+  if (!srcCtx || !maskCtx) {throw new Error("Failed to get canvas context");}
 
   const srcImage = srcCtx.getImageData(0, 0, width, height);
   const maskImage = maskCtx.getImageData(0, 0, width, height);
@@ -539,30 +528,40 @@ export const inpaintImage = (
   const totalMask = maskCount;
   const sortedPixels: number[] = [];
   for (let i = 0; i < size; i += 1) {
-    if (mask[i]) {
-      sortedPixels.push(i);
-    }
+    if (mask[i]) {sortedPixels.push(i);}
   }
   sortedPixels.sort((a, b) => (distMap[a] ?? 0) - (distMap[b] ?? 0));
 
+  let lastMatchX = 0;
+  let lastMatchY = 0;
+
   for (let pi = 0; pi < sortedPixels.length; pi += 1) {
     const idx = sortedPixels[pi]!;
-    if (!mask[idx]) {
-      continue;
-    }
+    if (!mask[idx]) {continue;}
     const px = idx % width;
     const py = (idx - px) / width;
-    const match = findBestPixel(r, g, b, mask, px, py, width, height);
+    const match = findBestPixel(
+      r,
+      g,
+      b,
+      mask,
+      px,
+      py,
+      width,
+      height,
+      lastMatchX,
+      lastMatchY
+    );
     r[idx] = match.r;
     g[idx] = match.g;
     b[idx] = match.b;
     mask[idx] = 0;
-    if (onProgress && pi % 30 === 0) {
-      onProgress(Math.min(pi / totalMask, 0.85));
-    }
+    lastMatchX = px;
+    lastMatchY = py;
+    if (onProgress && pi % 30 === 0) {onProgress(Math.min(pi / totalMask, 0.85));}
   }
 
-  fallbackFill(r, g, b, mask, width, height);
+  iterativeDiffusionFill(r, g, b, mask, width, height);
   postProcess(
     r,
     g,
@@ -585,7 +584,5 @@ export const drawInpaintedResult = (
   result: ImageData
 ): void => {
   const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.putImageData(result, 0, 0);
-  }
+  if (ctx) {ctx.putImageData(result, 0, 0);}
 };
