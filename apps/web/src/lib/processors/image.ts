@@ -56,7 +56,9 @@ const computeDistanceMap = (
     ] as const;
 
     for (const [nx, ny] of neighbors) {
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
       const nidx = ny * width + nx;
       if (dist[nidx]! < 0 || dist[nidx]! > d + 1) {
         dist[nidx] = d + 1;
@@ -105,12 +107,18 @@ const computeDataTerm = (
   let maxGrad = 0;
   for (let dy = -1; dy <= 1; dy += 1) {
     for (let dx = -1; dx <= 1; dx += 1) {
-      if (dx === 0 && dy === 0) {continue;}
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
       const nx = x + dx;
       const ny = y + dy;
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
       const nidx = ny * width + nx;
-      if (mask[nidx]) {continue;}
+      if (mask[nidx]) {
+        continue;
+      }
       const idx = y * width + x;
       const dr = Math.abs((r[idx] ?? 0) - (r[nidx] ?? 0));
       const dg = Math.abs((g[idx] ?? 0) - (g[nidx] ?? 0));
@@ -137,24 +145,6 @@ const computePriority = (
   return confidence * (1 + data);
 };
 
-const isPatchClean = (
-  mask: Uint8Array,
-  sx: number,
-  sy: number,
-  width: number,
-  height: number
-): boolean => {
-  for (let dy = -CTX_RADIUS; dy <= CTX_RADIUS; dy += 1) {
-    for (let dx = -CTX_RADIUS; dx <= CTX_RADIUS; dx += 1) {
-      const px = sx + dx;
-      const py = sy + dy;
-      if (px < 0 || px >= width || py < 0 || py >= height) {return false;}
-      if (mask[py * width + px]) {return false;}
-    }
-  }
-  return true;
-};
-
 const pixelSSD = (
   r: Float32Array,
   g: Float32Array,
@@ -163,7 +153,9 @@ const pixelSSD = (
   tidx: number,
   sidx: number
 ): number => {
-  if (mask[tidx]) {return 0;}
+  if (mask[tidx]) {
+    return Number.NaN;
+  }
   const dr = (r[tidx] ?? 0) - (r[sidx] ?? 0);
   const dg = (g[tidx] ?? 0) - (g[sidx] ?? 0);
   const db = (b[tidx] ?? 0) - (b[sidx] ?? 0);
@@ -187,15 +179,24 @@ const computeContextSSD = (
   let count = 0;
   for (let dy = -CTX_RADIUS; dy <= CTX_RADIUS; dy += 1) {
     for (let dx = -CTX_RADIUS; dx <= CTX_RADIUS; dx += 1) {
-      if (dx === 0 && dy === 0) {continue;}
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
       const tx = cx + dx;
       const ty = cy + dy;
       const ssx = sx + dx;
       const ssy = sy + dy;
-      if (tx < 0 || tx >= width || ty < 0 || ty >= height) {continue;}
-      if (ssx < 0 || ssx >= width || ssy < 0 || ssy >= height) {continue;}
-      ssd += pixelSSD(r, g, b, mask, ty * width + tx, ssy * width + ssx);
-      count += 1;
+      if (tx < 0 || tx >= width || ty < 0 || ty >= height) {
+        continue;
+      }
+      if (ssx < 0 || ssx >= width || ssy < 0 || ssy >= height) {
+        continue;
+      }
+      const pSSD = pixelSSD(r, g, b, mask, ty * width + tx, ssy * width + ssx);
+      if (!Number.isNaN(pSSD)) {
+        ssd += pSSD;
+        count += 1;
+      }
     }
   }
   return count > 0 ? ssd / count : Number.POSITIVE_INFINITY;
@@ -247,8 +248,9 @@ const findBestPixel = (
 
   const evaluate = (sx: number, sy: number) => {
     const sidx = sy * width + sx;
-    if (mask[sidx]) {return;}
-    if (!isPatchClean(mask, sx, sy, width, height)) {return;}
+    if (mask[sidx]) {
+      return;
+    }
     const ssd = computeContextSSD(
       r,
       g,
@@ -273,18 +275,24 @@ const findBestPixel = (
   };
 
   for (let sy = lyMin; sy <= lyMax; sy += 1) {
-    for (let sx = lxMin; sx <= lxMax; sx += 1) {evaluate(sx, sy);}
+    for (let sx = lxMin; sx <= lxMax; sx += 1) {
+      evaluate(sx, sy);
+    }
   }
 
   if (lastSrcX > 0 || lastSrcY > 0) {
     for (let sy = cyMin; sy <= cyMax; sy += 2) {
-      for (let sx = cxMin; sx <= cxMax; sx += 2) {evaluate(sx, sy);}
+      for (let sx = cxMin; sx <= cxMax; sx += 2) {
+        evaluate(sx, sy);
+      }
     }
   }
 
   if (bestSSD > 500) {
     for (let sy = gyMin; sy <= gyMax; sy += SEARCH_STRIDE) {
-      for (let sx = gxMin; sx <= gxMax; sx += SEARCH_STRIDE) {evaluate(sx, sy);}
+      for (let sx = gxMin; sx <= gxMax; sx += SEARCH_STRIDE) {
+        evaluate(sx, sy);
+      }
     }
   }
 
@@ -298,8 +306,9 @@ const findBestPixel = (
         let sx = Math.max(CTX_RADIUS, cx - SEARCH_STRIDE + 1);
         sx <= Math.min(width - CTX_RADIUS - 1, cx + SEARCH_STRIDE - 1);
         sx += 1
-      )
-        {evaluate(sx, sy);}
+      ) {
+        evaluate(sx, sy);
+      }
     }
   }
 
@@ -331,10 +340,14 @@ const smoothPixel = (
 
   for (let dy = -SMOOTH_RADIUS; dy <= SMOOTH_RADIUS; dy += 1) {
     for (let dx = -SMOOTH_RADIUS; dx <= SMOOTH_RADIUS; dx += 1) {
-      if (dx === 0 && dy === 0) {continue;}
+      if (dx === 0 && dy === 0) {
+        continue;
+      }
       const nx = cx + dx;
       const ny = cy + dy;
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
       const nidx = ny * width + nx;
       sumR += r[nidx] ?? 0;
       sumG += g[nidx] ?? 0;
@@ -343,7 +356,9 @@ const smoothPixel = (
     }
   }
 
-  if (count === 0) {return { r: r[idx] ?? 0, g: g[idx] ?? 0, b: b[idx] ?? 0 };}
+  if (count === 0) {
+    return { r: r[idx] ?? 0, g: g[idx] ?? 0, b: b[idx] ?? 0 };
+  }
 
   const avgR = sumR / count;
   const avgG = sumG / count;
@@ -352,7 +367,9 @@ const smoothPixel = (
   const cg = g[idx] ?? 0;
   const cb = b[idx] ?? 0;
   const diff = Math.abs(cr - avgR) + Math.abs(cg - avgG) + Math.abs(cb - avgB);
-  if (diff > SMOOTH_THRESHOLD) {return { r: avgR, g: avgG, b: avgB };}
+  if (diff > SMOOTH_THRESHOLD) {
+    return { r: avgR, g: avgG, b: avgB };
+  }
   return { r: cr, g: cg, b: cb };
 };
 
@@ -400,7 +417,9 @@ const bilateralFilterPixel = (
     for (let kx = -BILATERAL_RADIUS; kx <= BILATERAL_RADIUS; kx += 1) {
       const nx = x + kx;
       const ny = y + ky;
-      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {continue;}
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+        continue;
+      }
       const nidx = ny * width + nx;
       const nr = srcR[nidx] ?? 0;
       const ng = srcG[nidx] ?? 0;
@@ -488,7 +507,9 @@ const blendBoundary = (
     for (let x = 0; x < width; x += 1) {
       const idx = y * width + x;
       const d = distMap[idx]!;
-      if (d <= 0 || d > BLEND_BAND) {continue;}
+      if (d <= 0 || d > BLEND_BAND) {
+        continue;
+      }
       const t = (d / BLEND_BAND) ** 0.7;
       r[idx] = srcR[idx]! * (1 - t) + r[idx]! * t;
       g[idx] = srcG[idx]! * (1 - t) + g[idx]! * t;
@@ -514,8 +535,12 @@ const priorityFill = (
 
   const boundaryPixels: number[] = [];
   for (let i = 0; i < size; i += 1) {
-    if (!mask[i]) {continue;}
-    if (distMap[i]! <= 1) {boundaryPixels.push(i);}
+    if (!mask[i]) {
+      continue;
+    }
+    if (distMap[i]! <= 1) {
+      boundaryPixels.push(i);
+    }
   }
 
   while (boundaryPixels.length > 0) {
@@ -525,7 +550,9 @@ const priorityFill = (
 
     for (let bi = 0; bi < boundaryPixels.length; bi += 1) {
       const idx = boundaryPixels[bi]!;
-      if (!mask[idx]) {continue;}
+      if (!mask[idx]) {
+        continue;
+      }
       const px = idx % width;
       const py = (idx - px) / width;
       const p = computePriority(mask, r, g, b, distMap, px, py, width, height);
@@ -536,7 +563,9 @@ const priorityFill = (
       }
     }
 
-    if (bestIdx < 0) {break;}
+    if (bestIdx < 0) {
+      break;
+    }
 
     const px = bestIdx % width;
     const py = (bestIdx - px) / width;
